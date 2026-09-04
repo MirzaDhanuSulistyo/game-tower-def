@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#1c2733" />
+<title>Rampart Siege — Physics Tower Defense</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c2733'/%3E%3Crect x='6' y='18' width='20' height='8' fill='%237d8ca3'/%3E%3Crect x='13' y='8' width='6' height='12' fill='%23e8b83a'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<canvas id="game" tabindex="0"></canvas>
+
+<div id="hud-top">
+  <div class="stat"><span class="label">Gold</span><span id="gold-num" class="num gold">150</span></div>
+  <div class="stat"><span class="label">Lives</span><span id="lives-num" class="num lives">20</span></div>
+  <div class="stat"><span class="label">Level</span><span id="level-num" class="num">1/3</span></div>
+  <div class="stat"><span class="label">Wave</span><span id="wave-num" class="num">0/10</span></div>
+  <div class="stat"><span class="label">Left</span><span id="left-num" class="num">–</span></div>
+  <div class="spacer"></div>
+  <button id="btn-speed" class="chip" type="button" title="Toggle speed (F)">1×</button>
+  <button id="btn-wave" class="chip primary" type="button" title="Start next wave (Space)">Start wave</button>
+</div>
+
+<div id="toast"></div>
+<div id="hint">Pick a tower below, then click the ground to build. Right-drag to pan, wheel to zoom.</div>
+
+<div id="hud-build">
+  <button class="card" data-build="cannon" type="button">
+    <span class="emoji">💣</span><span class="name">Cannon</span><span class="cost">50g</span>
+    <span class="sub">knockback</span>
+  </button>
+  <button class="card" data-build="gatling" type="button">
+    <span class="emoji">🔫</span><span class="name">Gatling</span><span class="cost">40g</span>
+    <span class="sub">rapid</span>
+  </button>
+  <button class="card" data-build="frost" type="button">
+    <span class="emoji">❄️</span><span class="name">Frost</span><span class="cost">65g</span>
+    <span class="sub">slow 30%</span>
+  </button>
+  <button class="card" data-build="mortar" type="button">
+    <span class="emoji">🎯</span><span class="name">Mortar</span><span class="cost">80g</span>
+    <span class="sub">splash</span>
+  </button>
+  <button class="card" data-build="wall" type="button">
+    <span class="emoji">🧱</span><span class="name">Wall</span><span class="cost">20g</span>
+    <span class="sub">block lane</span>
+  </button>
+</div>
+
+<div id="sel-panel" class="hidden">
+  <div id="sel-title">Cannon Lv1</div>
+  <div id="sel-desc">DMG 12 · RNG 9</div>
+  <div class="row">
+    <button id="btn-upgrade" type="button">Upgrade (40g)</button>
+    <button id="btn-sell" type="button">Sell</button>
+    <button id="btn-close" type="button" aria-label="Close">✕</button>
+  </div>
+</div>
+
+<div id="overlay-start" class="overlay">
+  <div class="panel">
+    <h1>Rampart Siege</h1>
+    <p class="tag">A physics tower defense — shove them off the bridge.</p>
+    <p class="hintp">Cannon and Mortar deal real knockback. Frost slows. Walls take hits.
+      Anything that falls into the canyon dies instantly for bonus gold.
+      Survive all 10 waves on each of the 3 lanes — every lane is a different
+      path. Press <b>Start wave</b> early for +bonus gold.</p>
+    <button id="btn-start">Start Defense</button>
+  </div>
+</div>
+
+<div id="overlay-end" class="overlay hidden">
+  <div class="panel">
+    <h2 id="end-title">Victory!</h2>
+    <p id="end-sub" class="tag"></p>
+    <div class="finals">
+      <div><span class="label">Progress</span><span id="end-waves" class="big">10/10</span></div>
+      <div><span class="label">Gold</span><span id="end-gold" class="big">0</span></div>
+    </div>
+    <button id="btn-next">Next Lane →</button>
+    <button id="btn-again">Play Again</button>
+  </div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
