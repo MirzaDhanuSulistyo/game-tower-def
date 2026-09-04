@@ -3,6 +3,9 @@ import { GRID, mulberry32 } from './config';
 
 export type Vec3 = [number, number, number];
 
+/** Roadside billboard spot: map corner, off-lane on all 3 levels. */
+export const BILLBOARD = { x: 18, z: -18 };
+
 export interface PitRect { minX: number; maxX: number; minZ: number; maxZ: number; depth: number }
 export interface BridgeRect { minX: number; maxX: number; minZ: number; maxZ: number; topY: number }
 
@@ -116,6 +119,7 @@ export function isBuildable(x: number, z: number, layout: MapLayout): { ok: bool
   }
   if (Math.hypot(x - layout.keep[0], z - layout.keep[2]) < 3.2) return { ok: false, reason: 'Too close to keep' };
   if (Math.hypot(x - layout.spawn[0], z - layout.spawn[2]) < 3.2) return { ok: false, reason: 'Too close to portal' };
+  if (Math.hypot(x - BILLBOARD.x, z - BILLBOARD.z) < 2.5) return { ok: false, reason: 'Billboard' };
   return { ok: true, reason: '' };
 }
 
@@ -131,6 +135,98 @@ function lambert(color: string, emissive = '#000000', ei = 0): THREE.MeshStandar
   return new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.02, emissive, emissiveIntensity: ei });
 }
 
+/** Official Meta mark (simple-icons path, 24x24) drawn onto the board. */
+const META_PATH =
+  'M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z';
+
+function makeBillboardTexture(): THREE.CanvasTexture {
+  const cv = document.createElement('canvas');
+  cv.width = 1024;
+  cv.height = 512;
+  const ctx = cv.getContext('2d');
+  if (!ctx) throw new Error('no 2d context');
+  const bg = ctx.createLinearGradient(0, 0, 0, 512);
+  bg.addColorStop(0, '#16283f');
+  bg.addColorStop(1, '#0b1220');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 1024, 512);
+  ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(16, 16, 992, 480);
+  // Meta mark.
+  ctx.save();
+  ctx.translate(70, 126);
+  ctx.scale(10.8, 10.8);
+  const mg = ctx.createLinearGradient(0, 0, 24, 24);
+  mg.addColorStop(0, '#0082FB');
+  mg.addColorStop(1, '#0064E0');
+  ctx.fillStyle = mg;
+  ctx.fill(new Path2D(META_PATH));
+  ctx.restore();
+  // Divider.
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(384, 70, 5, 372);
+  // Copy.
+  ctx.fillStyle = '#9fd8ff';
+  ctx.font = '700 46px Verdana, Geneva, sans-serif';
+  try {
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = '6px';
+  } catch { /* older browsers */ }
+  ctx.fillText('BUILT WITH META AI', 432, 150);
+  const gold = ctx.createLinearGradient(0, 220, 0, 470);
+  gold.addColorStop(0, '#ffe9a8');
+  gold.addColorStop(0.5, '#ffd257');
+  gold.addColorStop(1, '#e09a1f');
+  ctx.font = '900 148px "Arial Black", Impact, sans-serif';
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#4a2c06';
+  ctx.strokeText('MUSE', 425, 305);
+  ctx.strokeText('SPARK', 425, 452);
+  ctx.fillStyle = gold;
+  ctx.fillText('MUSE', 425, 305);
+  ctx.fillText('SPARK', 425, 452);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Roadside billboard crediting the build. Decor only: no collider. */
+function buildBillboard(g: THREE.Group): void {
+  const b = new THREE.Group();
+  b.position.set(BILLBOARD.x, 0, BILLBOARD.z);
+  const frameMat = lambert('#2a3340');
+  const postMat = lambert('#3a4452');
+  for (const sx of [-2.6, 2.6]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.55, 3.2, 0.55), postMat);
+    post.position.set(sx, 1.6, 0);
+    post.castShadow = true;
+    b.add(post);
+  }
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(7.2, 3.6, 0.35), frameMat);
+  panel.position.set(0, 4.4, 0);
+  panel.castShadow = true;
+  b.add(panel);
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.8, 3.2),
+    new THREE.MeshBasicMaterial({ map: makeBillboardTexture(), toneMapped: false }),
+  );
+  face.position.set(0, 4.4, 0.19);
+  b.add(face);
+  // Marquee lamps on top, like a real roadside board.
+  const lampMat = new THREE.MeshStandardMaterial({
+    color: '#ffca7a', emissive: '#ffb84d', emissiveIntensity: 1.4, roughness: 0.4,
+  });
+  for (const sx of [-2.4, 0, 2.4]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.5), postMat);
+    arm.position.set(sx, 6.35, 0.1);
+    b.add(arm);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), lampMat);
+    lamp.position.set(sx, 6.1, 0.28);
+    b.add(lamp);
+  }
+  g.add(b);
+}
 /** Builds all static visuals. Safe to call per level: replaces the old
  *  'terrain' group and only adds lights once. Returns path ribbon mat. */
 export function buildScenery(scene: THREE.Scene, layout: MapLayout, seed = 7): { pathMat: THREE.MeshBasicMaterial } {
@@ -208,7 +304,7 @@ export function buildScenery(scene: THREE.Scene, layout: MapLayout, seed = 7): {
   const postMat = lambert('#3a332a');
   const lanternMat = new THREE.MeshStandardMaterial({ color: '#ffca7a', emissive: '#ff9d2e', emissiveIntensity: 1.6, roughness: 0.4 });
   for (const br of layout.bridges) {
-    const topY = br.topY ?? 0.08;
+    const topY = br.topY ?? 0.03;
     const deck = new THREE.Mesh(
       new THREE.BoxGeometry(br.maxX - br.minX, 0.5, br.maxZ - br.minZ),
       lambert('#7d7466'),
@@ -434,11 +530,15 @@ export function buildScenery(scene: THREE.Scene, layout: MapLayout, seed = 7): {
   crest.name = 'keep-crest';
   g.add(crest);
 
+  // Roadside credit billboard (decor only, no collider).
+  buildBillboard(g);
+
   // Scatter rocks / pines (deterministic, off-path).
   for (let i = 0; i < 46; i++) {
     const x = (rng() - 0.5) * 48;
     const z = (rng() - 0.5) * 48;
     if (Math.abs(x) > 24 || Math.abs(z) > 24) continue;
+    if (Math.hypot(x - BILLBOARD.x, z - BILLBOARD.z) < 5.5) continue;
     if (x > pit.minX - 2 && x < pit.maxX + 2 && z > pit.minZ - 3 && z < pit.maxZ + 3) continue;
     let onPath = false;
     for (let s = 0; s < layout.waypoints.length - 1; s++) {
