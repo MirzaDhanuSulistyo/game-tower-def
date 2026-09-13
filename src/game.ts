@@ -1168,7 +1168,11 @@ export class Game {
   }
 
   zoom(f: number): void {
-    this.camZoom = clamp(this.camZoom * f, 0.55, 1.9);
+    // Portrait screens show only a sliver of the lane at desktop zoom
+    // bounds, so let them pull the camera further out.
+    const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+    const max = aspect < 0.8 ? 2.7 : aspect < 1.3 ? 2.3 : 1.9;
+    this.camZoom = clamp(this.camZoom * f, 0.55, max);
   }
 
   present(_dt: number, camera: THREE.PerspectiveCamera): void {
@@ -1183,7 +1187,7 @@ export class Game {
     camera.lookAt(this.tmpB);
   }
 
-  info(): { state: GameState; rev: number; gold: number; lives: number; wave: number; level: number; enemies: number; towers: number; spawning: boolean; queue: number; projs: number; foes: Array<{ kind: string; x: number; y: number; z: number; hp: number; wp: number }> } {
+  info(): { state: GameState; rev: number; gold: number; lives: number; wave: number; level: number; enemies: number; towers: number; spawning: boolean; queue: number; projs: number; cam: { x: number; z: number; zoom: number }; foes: Array<{ kind: string; x: number; y: number; z: number; hp: number; wp: number }> } {
     const foes = Array.from(this.enemies.values()).slice(0, 8).map((e) => {
       const p = e.body.translation();
       return {
@@ -1207,6 +1211,7 @@ export class Game {
       spawning: this.spawning,
       queue: this.spawnQueue.length,
       projs: this.projs.size,
+      cam: { x: this.camTarget.x, z: this.camTarget.z, zoom: this.camZoom },
       foes,
     };
   }

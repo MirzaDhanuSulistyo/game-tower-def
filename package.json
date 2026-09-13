@@ -9,6 +9,7 @@
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "e2e": "node scripts/e2e.mjs",
+    "e2e:touch": "node scripts/touch-e2e.mjs",
     "cover": "node scripts/cover-shot.mjs"
   },
   "dependencies": {

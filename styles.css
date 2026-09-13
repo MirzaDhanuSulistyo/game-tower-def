@@ -8,7 +8,11 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
-body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #eef4fa; }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #eef4fa;
+  overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+button, .card { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
 #hud-top {
@@ -88,6 +92,7 @@ button.hidden { display: none; }
   background: #101820ee; border: 1px solid var(--line); border-radius: 16px;
   padding: 26px 28px; max-width: 520px; width: 100%; text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  max-height: 86vh; max-height: 86dvh; overflow-y: auto;
 }
 .panel h1, .panel h2 { margin: 0 0 6px; }
 .panel .tag { opacity: .85; margin: 0 0 10px; }
@@ -103,9 +108,39 @@ button.hidden { display: none; }
 @keyframes bump { 0% { transform: scale(1.25); } 100% { transform: scale(1); } }
 
 @media (max-width: 700px) {
-  #hud-top .stat { min-width: 0; padding: 5px 9px; }
-  #hud-top .num { font-size: 15px; }
-  .card { min-width: 74px; }
+  #hud-top { flex-wrap: wrap; gap: 6px; padding: calc(6px + env(safe-area-inset-top)) 8px 6px; }
+  #hud-top .stat { min-width: 0; padding: 4px 8px; border-radius: 8px; }
+  #hud-top .label { font-size: 8px; }
+  #hud-top .num { font-size: 14px; }
+  .chip { padding: 11px 14px; }
+  .card { min-width: 76px; padding: 9px 5px 8px; }
+  .card .emoji { font-size: 22px; }
   #hint { display: none; }
-  #sel-panel { left: 50%; transform: translateX(-50%); bottom: 96px; }
+  #sel-panel { left: 50%; transform: translateX(-50%); bottom: calc(106px + env(safe-area-inset-bottom)); min-width: 250px; }
+  #sel-panel button { padding: 10px 12px; }
+}
+
+@media (max-width: 400px) {
+  #hud-top .stat { padding: 3px 6px; }
+  .card { min-width: 64px; }
+  .card .sub { display: none; }
+}
+
+/* Landscape phones: every pixel of height counts. */
+@media (max-height: 500px) {
+  #hud-top { gap: 6px; padding: calc(4px + env(safe-area-inset-top)) 8px 4px; }
+  #hud-top .stat { padding: 2px 7px; border-radius: 7px; }
+  #hud-top .label { font-size: 7px; }
+  #hud-top .num { font-size: 13px; }
+  .chip { padding: 6px 12px; }
+  #toast { top: 40px; font-size: 12px; }
+  #hud-build { bottom: calc(4px + env(safe-area-inset-bottom)); }
+  .card { min-width: 68px; padding: 4px 4px 3px; }
+  .card .emoji { font-size: 16px; }
+  .card .sub { display: none; }
+  #sel-panel { bottom: calc(64px + env(safe-area-inset-bottom)); padding: 6px 10px; }
+  #sel-panel button { padding: 6px 9px; }
+  .panel { padding: 12px 18px; }
+  .panel .hintp { font-size: 12px; }
+  .panel button { padding: 9px 16px; margin-top: 8px; font-size: 14px; }
 }

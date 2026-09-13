@@ -18,8 +18,10 @@ async function boot(): Promise<void> {
   await RAPIER.init();
 
   const canvas = el<HTMLCanvasElement>('game');
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Phone GPUs fill 2× DPR slowly; 1.8 is indistinguishable in motion.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, coarse ? 1.8 : 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -34,6 +36,12 @@ async function boot(): Promise<void> {
   const effects = new Effects(scene, camera);
   // Game constructor loads level 1 (lane path + scenery + colliders).
   const game = new Game(scene, effects, sound, ui);
+  // Portrait screens see a sliver of the map at zoom 1 — open wider.
+  if (window.innerWidth < window.innerHeight) game.zoom(1.7);
+
+  el<HTMLDivElement>('hint').textContent = coarse
+    ? 'Pick a tower below, then tap or drag on the ground to build. One finger pans the view, pinch to zoom.'
+    : 'Pick a tower below, then click the ground to build. Right-drag to pan, wheel to zoom.';
 
   function resize(): void {
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -68,87 +76,164 @@ async function boot(): Promise<void> {
     return ray.ray.intersectPlane(groundPlane, out) ? out : null;
   }
 
-  let rmb = false;
-  let lastX = 0;
-  let lastY = 0;
-  let moved = 0;
+  /* ------------------------------------------------------------------
+   * Input. Mouse keeps desktop behavior; touch/pen use one unified
+   * gesture system:
+   *   1 finger + build selected → drag moves the ghost, release places
+   *                               (a quick tap places too)
+   *   1 finger, no build        → drag pans the camera, tap selects
+   *   2 fingers                 → pan (midpoint) + pinch zoom
+   * ------------------------------------------------------------------ */
+  const TOUCH_TAP_PX = 14;
+
+  interface TouchPtr { x: number; y: number; lx: number; ly: number; downX: number; downY: number }
+  const touch = new Map<number, TouchPtr>();
+  let twoFinger = false; // a 2-finger gesture happened; suppress the tap on release
+  let pinchPrev = 0;
+  let panPrevX = 0;
+  let panPrevY = 0;
+
+  // Mouse state (hover ghost + LMB place/select + RMB/middle pan).
+  let mRMB = false;
+  let mMoved = 0;
+  let mLastX = 0;
+  let mLastY = 0;
+
+  function tapPlaceOrSelect(x: number, y: number): void {
+    const hit = pickGround(x, y);
+    if (!hit) return;
+    if (game.state !== 'playing') return;
+    if (game.buildSel) {
+      game.moveGhost(hit.x, hit.z);
+      if (!game.tryPlace()) {
+        // Occupied/invalid spot: treat as a select tap so towers stay
+        // inspectable in build mode (touch has no right-click).
+        game.clickSelect(hit);
+      }
+    } else {
+      game.clickSelect(hit);
+    }
+  }
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   canvas.addEventListener('pointerdown', (e) => {
     sound.ensure();
     canvas.focus();
-    canvas.setPointerCapture(e.pointerId);
-    lastX = e.clientX;
-    lastY = e.clientY;
-    moved = 0;
-    if (e.button === 2) rmb = true;
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+    if (e.pointerType === 'mouse') {
+      mLastX = e.clientX;
+      mLastY = e.clientY;
+      mMoved = 0;
+      if (e.button === 2) mRMB = true;
+      return;
+    }
+    touch.set(e.pointerId, { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, downX: e.clientX, downY: e.clientY });
+    if (touch.size === 2) {
+      twoFinger = true;
+      const [a, b] = [...touch.values()];
+      pinchPrev = Math.hypot(a.x - b.x, a.y - b.y);
+      panPrevX = (a.x + b.x) / 2;
+      panPrevY = (a.y + b.y) / 2;
+    }
   });
 
   canvas.addEventListener('pointermove', (e) => {
-    const dx = e.clientX - lastX;
-    const dy = e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    moved += Math.abs(dx) + Math.abs(dy);
-    if (rmb || (e.buttons === 2)) {
-      const s = game.camZoom * 0.035;
-      game.pan(-dx * s, -dy * s);
+    if (e.pointerType === 'mouse') {
+      const dx = e.clientX - mLastX;
+      const dy = e.clientY - mLastY;
+      mLastX = e.clientX;
+      mLastY = e.clientY;
+      mMoved += Math.abs(dx) + Math.abs(dy);
+      if (mRMB || e.buttons === 2 || e.buttons === 4) {
+        const s = game.camZoom * 0.035;
+        game.pan(-dx * s, -dy * s);
+        return;
+      }
+      const hit = pickGround(e.clientX, e.clientY);
+      if (hit) game.moveGhost(hit.x, hit.z);
       return;
     }
-    // Middle-drag or space-drag pans too.
-    if (e.buttons === 4) {
-      const s = game.camZoom * 0.035;
+    const p = touch.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.lx;
+    const dy = e.clientY - p.ly;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    p.lx = p.x;
+    p.ly = p.y;
+    if (touch.size >= 2) {
+      const [a, b] = [...touch.values()];
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchPrev > 0) {
+        const s = game.camZoom * 0.045;
+        game.pan(-(midX - panPrevX) * s, -(midY - panPrevY) * s);
+        game.zoom(Math.min(1.08, Math.max(0.92, pinchPrev / Math.max(20, d))));
+      }
+      pinchPrev = d;
+      panPrevX = midX;
+      panPrevY = midY;
+    } else if (game.buildSel) {
+      const hit = pickGround(p.x, p.y);
+      if (hit) game.moveGhost(hit.x, hit.z);
+    } else {
+      const s = game.camZoom * 0.045;
       game.pan(-dx * s, -dy * s);
-      return;
     }
-    const hit = pickGround(e.clientX, e.clientY);
-    if (hit) game.moveGhost(hit.x, hit.z);
   });
 
+  function endTouch(e: PointerEvent, cancelled: boolean): void {
+    const p = touch.get(e.pointerId);
+    if (!p) return;
+    touch.delete(e.pointerId);
+    if (touch.size === 1) {
+      // One finger remains after a pinch: re-baseline it so the drag
+      // doesn't jump and its release never counts as a tap.
+      const [rest] = [...touch.values()];
+      rest.lx = rest.x;
+      rest.ly = rest.y;
+      rest.downX = rest.x;
+      rest.downY = rest.y;
+    } else if (touch.size === 0) {
+      const was2 = twoFinger;
+      twoFinger = false;
+      pinchPrev = 0;
+      if (cancelled || was2) return;
+      const moved = Math.abs(p.x - p.downX) + Math.abs(p.y - p.downY);
+      if (!game.buildSel && moved > TOUCH_TAP_PX) return; // was a pan
+      tapPlaceOrSelect(p.x, p.y);
+    }
+  }
+
   canvas.addEventListener('pointerup', (e) => {
-    if (e.button === 2) {
-      rmb = false;
-      if (moved < 6) {
-        // Right-click cancels build selection.
-        game.setBuildSel(null);
-        ui.setSelected(null);
+    if (e.pointerType === 'mouse') {
+      if (e.button === 2) {
+        mRMB = false;
+        if (mMoved < 6) {
+          // Right-click cancels build selection.
+          game.setBuildSel(null);
+          ui.setSelected(null);
+        }
+        return;
       }
+      if (e.button !== 0 || mMoved > 8) return; // was a drag
+      tapPlaceOrSelect(e.clientX, e.clientY);
       return;
     }
-    if (e.button !== 0) return;
-    if (moved > 8) return; // was a drag
-    const hit = pickGround(e.clientX, e.clientY);
-    if (!hit) return;
-    if (game.state !== 'playing') return;
-    if (game.buildSel) {
-      game.moveGhost(hit.x, hit.z);
-      if (game.tryPlace()) {
-        // Keep build mode for walls, else keep it too (fast building). Shift not required.
-      }
-    } else {
-      game.clickSelect(hit);
-    }
+    endTouch(e, false);
+  });
+
+  canvas.addEventListener('pointercancel', (e) => {
+    if (e.pointerType === 'mouse') return;
+    endTouch(e, true);
   });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     game.zoom(e.deltaY > 0 ? 1.1 : 0.9);
   }, { passive: false });
-
-  // Touch pinch zoom.
-  let pinchD = 0;
-  canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2) {
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
-      );
-      if (pinchD > 0) game.zoom(pinchD / Math.max(1, d) > 1 ? 1.04 : 0.96);
-      pinchD = d;
-    }
-  }, { passive: true });
-  canvas.addEventListener('touchend', () => { pinchD = 0; });
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -189,6 +274,11 @@ async function boot(): Promise<void> {
 
   (window as unknown as { __td: unknown }).__td = {
     info: () => game.info(),
+    // World ground point -> screen px (tests / debugging).
+    project: (x: number, z: number) => {
+      const v = new THREE.Vector3(x, 0, z).project(camera);
+      return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
+    },
     start: () => game.start(),
     startWave: () => game.startWave(),
     nextLevel: () => game.nextLevel(),
